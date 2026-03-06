@@ -3,5 +3,27 @@
 <description of the system>
 
 # USER STORIES:
-
-<list of user stories>
+1) As a user I would the system to request data from the get endpoint
+2) As a user I would the system connects to telemetry endpoint via rest api to have continous data
+3) As a user I would scalar data to be converted into an unified internal schema to process them in standard way
+4) As a user I would complex datas to be converted into an unified internal schema to process them in standard way
+5) As a user I would 
+6) As a user I would normalized data to be sent to a message broker
+7) As a user I would automation engine consumes broker's messages in real time to evaluate rules witout caosing congestion.
+8) As a user I would system keeps in cache memory the last data retrieved from each sensor. 
+9) As a user I would system to evaluate rules dynamically at the arrival of new events.
+10) As a user I would define rules unsing operators (<, >, =)
+13) As a user I would send automatically a POST request to the actuators after a rule is satified. 
+14) As a user I would the actuation rules are saved in a database.
+15) As a user I would the aautomation engine rethrives all the rules from the database on startup.
+16) As a user I would delete a rule from the database from interface
+17) As a user I would create a rule from the database from interface
+18) As a user I would modify a rule from the database from interface
+19) As a user I would clear all rules from the database from interface
+20) As a user I would visualize a dashboard in realtime that shows all sensors values.
+21) As a user I would real time updates from backend to dashboard.
+22) As a user I would see line chart to visualize critical metrics in real time.
+23) As a user I would see the current state of all the actuators on the dashboard.
+24) As a user I would have an interface to create new rules using a form.
+25) As a user I would a list of all active rules in the dashboard.
+26) As a user I would start the entire system with a single comand
