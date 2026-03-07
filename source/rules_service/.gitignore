@@ -1,0 +1,17 @@
+# Ambienti virtuali Python
+venv/
+.venv/
+env/
+
+# File di cache di Python
+__pycache__/
+*.pyc
+
+# Database locale (non va mai condiviso il DB pieno dei tuoi test!)
+*.db
+*.sqlite3
+
+# File di sistema e IDE
+.idea/
+.vscode/
+.DS_Store
