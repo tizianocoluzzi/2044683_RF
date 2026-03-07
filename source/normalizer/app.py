@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import websockets
 from fastapi import WebSocket, WebSocketDisconnect
 import httpx
-
+from rabbitMQ import RabbitMQ
 from commonTelemetry import Measurement, SubsystemMetrics, CommonTelemetry
 from rest import (
     RestScalar,
@@ -133,62 +133,16 @@ app = FastAPI(title="Normalizer", lifespan=lifespan)
 async def root():
     return {"status": "ok"}
 
+@app.get("/test_rabbit")
+async def test():
 
-@app.get("/data")
-async def get_data():
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(f"{API_BASE_URL}/api/sensors/water_tank_level")
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=e.response.status_code, detail=str(e))
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Upstream service unavailable: {e}")
-
-
-@app.get("/data/all")
-async def get_all_sensor_data():
-    """Fetch all REST sensors in parallel and return them normalized."""
-    async with httpx.AsyncClient() as client:
-        results = {}
-        tasks = {
-            sensor: client.get(f"{API_BASE_URL}/api/sensors/{sensor}")
-            for sensor in REST_SENSORS
-        }
-        responses = await asyncio.gather(*tasks.values(), return_exceptions=True)
-        for sensor, resp in zip(tasks.keys(), responses):
-            if isinstance(resp, Exception):
-                results[sensor] = {"error": str(resp)}
-                continue
-            try:
-                resp.raise_for_status()
-                raw = resp.json()
-                common = normalize_rest(sensor, raw)
-                results[sensor] = common.model_dump()
-            except Exception as e:
-                results[sensor] = {"error": str(e)}
-        return results
-
-
-@app.get("/data/{sensor_name}")
-async def get_sensor_data(sensor_name: str):
-    """Fetch a single REST sensor and return it in CommonTelemetry format."""
-    if sensor_name not in REST_MODEL_MAP:
-        raise HTTPException(status_code=404, detail=f"Unknown sensor: {sensor_name}")
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(f"{API_BASE_URL}/api/sensors/{sensor_name}")
-            response.raise_for_status()
-            raw = response.json()
-            common = normalize_rest(sensor_name, raw)
-            return common.model_dump()
-        except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=e.response.status_code, detail=str(e))
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"Upstream service unavailable: {e}")
-        except ValueError as e:
-            raise HTTPException(status_code=500, detail=f"Normalization error: {e}")
+    rabbitmq = RabbitMQ()
+    message = 'Test message'
+    queue_name = 'queue'
+    rabbitmq.publish(queue_name, message)
+    print(f"Sent message: {message}")
+    rabbitmq.close()
+    return {'status':'ok'}
 
 
 @app.get("/sensors")
