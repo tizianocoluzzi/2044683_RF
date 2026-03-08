@@ -34,3 +34,19 @@ services:
       API_BASE_URL: http://base:8080
       WS_BASE_URL: ws://base:8080
     restart: on-failure
+
+  rule-engine:
+    build:
+      context: ./source/rule-engine
+    container_name: rule-engine
+    ports:
+      - '8000:8000'
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      base:
+        condition: service_started
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      ACTUATOR_BASE_URL: http://base:8080/api/actuators
+    restart: on-failure

@@ -1,29 +1,51 @@
+import logging
 from typing import List
+from threading import Thread
 
 from fastapi import FastAPI
 
 from .config import settings
+from .rabbitmq_consumer import RabbitMQConsumer
 from .models import Rule, UnifiedSensorEvent
 from .rules_engine import RuleEngine
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.service_name)
 
 rule_engine = RuleEngine()
 
-#TEMP for testing#
-from fastapi import HTTPException
-from .actuators_client import ActuatorsClient
+rabbit_consumer: RabbitMQConsumer | None = None
 
-@app.get("/test-actuator/{actuator_name}/{state}")
-async def test_actuator(actuator_name: str, state: str):
-    if state not in ("ON", "OFF"):
-        raise HTTPException(status_code=400, detail="state must be ON or OFF")
+@app.on_event("startup")
+def startup() -> None:
+    """
+    Start the RabbitMQ consumer in a background thread.
+    This avoids blocking the FastAPI main thread.
+    """
+    global rabbit_consumer
 
-    client = ActuatorsClient()
-    await client.set_state(actuator_name, state)
-    return {"actuator": actuator_name, "state": state, "status": "ok"}
+    if rabbit_consumer is None:
+        rabbit_consumer = RabbitMQConsumer(rule_engine)
 
-#TEMP for testing#
+    Thread(target=rabbit_consumer.start, daemon=True).start()
+    logger.info("%s started", settings.service_name)
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    """
+    Stop the RabbitMQ consumer gracefully on shutdown.
+    """
+    global rabbit_consumer
+
+    if rabbit_consumer is not None:
+        try:
+            rabbit_consumer.stop()
+        except Exception as exc:
+            logger.error("Error while stopping RabbitMQ consumer: %s", exc)
+
 
 @app.get("/health")
 async def health():
@@ -59,3 +81,19 @@ async def handle_sensor_event(event: UnifiedSensorEvent):
         "captured_at": event.captured_at,
         "triggered_rules": triggered,
     }
+
+
+#TEMP for testing#
+from fastapi import HTTPException
+from .actuators_client import ActuatorsClient
+
+@app.get("/test-actuator/{actuator_name}/{state}")
+async def test_actuator(actuator_name: str, state: str):
+    if state not in ("ON", "OFF"):
+        raise HTTPException(status_code=400, detail="state must be ON or OFF")
+
+    client = ActuatorsClient()
+    await client.set_state(actuator_name, state)
+    return {"actuator": actuator_name, "state": state, "status": "ok"}
+
+#TEMP for testing#
