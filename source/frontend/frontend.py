@@ -140,7 +140,3 @@ async def proxy_create_rule(request: Request):
             return JSONResponse(status_code=resp.status_code, content=resp.json())
         except httpx.RequestError as e:
             raise HTTPException(status_code=502, detail=f"Rules service unreachable: {e}")
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=5000)
