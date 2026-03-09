@@ -1,9 +1,8 @@
-from fastapi import FastAPI, HTTPException
 import asyncio
 import json
-from contextlib import asynccontextmanager
+import os
+import signal
 import websockets
-from fastapi import WebSocket, WebSocketDisconnect
 import httpx
 from rabbitMQ import RabbitMQ
 from commonTelemetry import Measurement, SubsystemMetrics, CommonTelemetry
@@ -19,10 +18,11 @@ from topics import (
     TopicThermalLoop,
     TopicAirlock,
 )
+from actuator import RestActuators, RestActuator
 
 
-API_BASE_URL = "http://localhost:8080"
-WS_BASE_URL = "ws://localhost:8080"
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8080")
+WS_BASE_URL  = os.getenv("WS_BASE_URL",  "ws://localhost:8080")
 
 # ── Topic → Model mapping ────────────────────────────────────────────
 TOPIC_MODEL_MAP = {
@@ -47,13 +47,20 @@ REST_MODEL_MAP = {
     "water_tank_level":       RestLevel,
 }
 
+ACTUATOR_ENDPOINT = os.getenv("ACTUATOR_ENDPOINT", "/api/actuators")
+
 TOPICS = list(TOPIC_MODEL_MAP.keys())
 REST_SENSORS = list(REST_MODEL_MAP.keys())
 
 latest_telemetry: dict[str, dict] = {t: {} for t in TOPICS}
 latest_sensors: dict[str, dict] = {s: {} for s in REST_SENSORS}
+latest_actuators: dict[str, dict] = {}
 
-SENSOR_POLL_INTERVAL = 5  # seconds
+SENSOR_POLL_INTERVAL = int(os.getenv("SENSOR_POLL_INTERVAL", "5"))  # seconds
+
+sensor_queue = "sensors"
+actuator_queue = "actuators"
+
 
 
 # ── Normalization helpers ─────────────────────────────────────────────
@@ -74,6 +81,15 @@ def normalize_rest(sensor_name: str, raw: dict) -> CommonTelemetry:
     return model_cls(**raw).to_common()
 
 
+def normalize_actuators(raw: dict) -> list[RestActuator]:
+    """Parse the actuators payload and return one RestActuator per entry.
+
+    Input:  {"actuators": {"cooling_fan": "OFF", ...}}
+    Output: [RestActuator(actuator_id="cooling_fan", state="OFF"), ...]
+    """
+    return RestActuators(**raw).to_list()
+
+
 # ── Background WebSocket listener ────────────────────────────────────
 
 async def telemetry_listener(topic: str):
@@ -89,6 +105,14 @@ async def telemetry_listener(topic: str):
                         raw = json.loads(message)
                         common = normalize_topic(topic, raw)
                         latest_telemetry[topic] = common.model_dump()
+
+                        try:
+                            rabbitmq = RabbitMQ()
+                            rabbitmq.publish(sensor_queue, json.dumps(common.model_dump()))
+                            rabbitmq.close()
+                        except Exception as e:
+                            print(f"RabbitMQ publish error in topic {topic}: {e}")
+                    
                     except (json.JSONDecodeError, ValueError) as e:
                         print(f"[{topic}] normalization error: {e}")
                         latest_telemetry[topic] = {"raw": message}
@@ -111,61 +135,63 @@ async def sensor_poller():
                     raw = resp.json()
                     common = normalize_rest(sensor, raw)
                     latest_sensors[sensor] = common.model_dump()
+                    
+                    try:
+                        rabbitmq = RabbitMQ()
+                        rabbitmq.publish(sensor_queue, json.dumps(common.model_dump()))
+                        rabbitmq.close()
+                    except Exception as e:
+                        print(f"RabbitMQ publish error in sensor {sensor}: {e}")
+                    
                 except Exception as e:
                     print(f"[{sensor}] poll error: {e}")
             await asyncio.sleep(SENSOR_POLL_INTERVAL)
 
+async def actuator_poller():
+    """Background task: poll the actuators endpoint and publish each actuator separately."""
+    async with httpx.AsyncClient() as client:
+        while True:
+            try:
+                resp = await client.get(f"{API_BASE_URL}{ACTUATOR_ENDPOINT}")
+                resp.raise_for_status()
+                raw = resp.json()
+                messages = normalize_actuators(raw)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+                for msg in messages:
+                    latest_actuators[msg.actuator_id] = msg.model_dump()
+                    try:
+                        rabbitmq = RabbitMQ()
+                        rabbitmq.publish(actuator_queue, json.dumps(msg.model_dump()))
+                        rabbitmq.close()
+                    except Exception as e:
+                        print(f"RabbitMQ publish error for actuator {msg.actuator_id}: {e}")
+
+            except Exception as e:
+                print(f"[actuator_poller] poll error: {e}")
+            await asyncio.sleep(SENSOR_POLL_INTERVAL)
+
+
+async def main():
     tasks = []
     for t in TOPICS:
         tasks.append(asyncio.create_task(telemetry_listener(t)))
     tasks.append(asyncio.create_task(sensor_poller()))
-    yield
+    tasks.append(asyncio.create_task(actuator_poller()))
+
+    loop = asyncio.get_running_loop()
+    stop = loop.create_future()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, stop.set_result, None)
+
+    print("Normalizer running. Press Ctrl+C to stop.")
+    await stop
+
     for task in tasks:
         task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    print("Shutdown complete.")
 
 
-app = FastAPI(title="Normalizer", lifespan=lifespan)
+if __name__ == "__main__":
+    asyncio.run(main())
 
-@app.get("/")
-async def root():
-    return {"status": "ok"}
-
-@app.get("/test_rabbit")
-async def test():
-
-    rabbitmq = RabbitMQ()
-    message = 'Test message'
-    queue_name = 'queue'
-    rabbitmq.publish(queue_name, message)
-    print(f"Sent message: {message}")
-    rabbitmq.close()
-    return {'status':'ok'}
-
-
-@app.get("/sensors")
-async def get_all_sensors():
-    """Return the latest cached sensor data (polled every 5s)."""
-    if not any(latest_sensors.values()):
-        raise HTTPException(status_code=503, detail="No sensor data available yet")
-    return latest_sensors
-
-
-@app.get("/sensors/{sensor_name}")
-async def get_cached_sensor(sensor_name: str):
-    """Return the latest cached data for a single sensor."""
-    if sensor_name not in latest_sensors:
-        raise HTTPException(status_code=404, detail=f"Unknown sensor: {sensor_name}")
-    if not latest_sensors[sensor_name]:
-        raise HTTPException(status_code=503, detail=f"No data yet for {sensor_name}")
-    return latest_sensors[sensor_name]
-
-
-@app.get("/ws")
-async def get_telemetry():
-    """Return the latest telemetry data as plain JSON."""
-    if not latest_telemetry:
-        raise HTTPException(status_code=503, detail="No telemetry data available yet")
-    return latest_telemetry
