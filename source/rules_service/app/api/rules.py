@@ -1,4 +1,6 @@
 # app/api/rules.py
+from http.client import HTTPException
+
 from fastapi import APIRouter, Depends, BackgroundTasks
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
@@ -64,3 +66,43 @@ def disable_actuator_rules(
 
     # 3. Rispondi al frontend
     return disabled_rules
+
+@router.put("/{rule_id}", response_model=RuleResponse)
+def modify_rule(
+        rule_id: int,
+        rule: RuleCreate,  # Usiamo lo stesso schema della creazione per comodità
+        background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db)
+):
+    # 1. Modifica la regola nel DB (usiamo model_dump() o dict() a seconda della versione di Pydantic)
+    rule_dict = rule.model_dump() if hasattr(rule, 'model_dump') else rule.dict()
+    db_rule = crud_rule.update_rule(db, rule_id, rule_dict)
+
+    if not db_rule:
+        raise HTTPException(status_code=404, detail="Regola non trovata")
+
+    # 2. Avvisa il Motore di Automazione inviando la regola aggiornata
+    rule_data = jsonable_encoder([db_rule])
+    background_tasks.add_task(send_rules_to_engine, rule_data)
+
+    return db_rule
+
+
+@router.delete("/{rule_id}")
+def remove_rule(
+        rule_id: int,
+        background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db)
+):
+    # 1. Elimina la regola dal DB
+    db_rule = crud_rule.delete_rule(db, rule_id)
+
+    if not db_rule:
+        raise HTTPException(status_code=404, detail="Regola non trovata")
+
+    # 2. TRUCCO: Mandiamo al Motore di Automazione un finto aggiornamento
+    # dicendogli che questa regola ora è "is_active = False", così smette di usarla!
+    rule_data = jsonable_encoder([{"id": rule_id, "is_active": False}])
+    background_tasks.add_task(send_rules_to_engine, rule_data)
+
+    return {"message": f"Regola {rule_id} eliminata con successo"}
