@@ -8,7 +8,7 @@ from .models import (
     Rule,
     UnifiedSensorEvent,
 )
-
+from .actuator_control import ActuatorControlManager
 
 class RuleEngine:
     """
