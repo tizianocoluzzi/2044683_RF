@@ -64,3 +64,17 @@ class UnifiedSensorEvent(BaseModel):
     captured_at: str
     status: Optional[SensorStatus] = None
     metrics: List[MetricGroup]
+
+# -----------------------------------
+# Actuator models
+# -----------------------------------
+
+class ActuatorMode(str, Enum):
+    AUTO = "AUTO"
+    ON = "ON"
+    OFF = "OFF"
+
+
+class ActuatorOverrideRequest(BaseModel):
+    actuator: str
+    mode: ActuatorMode
