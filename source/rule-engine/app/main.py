@@ -6,8 +6,9 @@ from fastapi import FastAPI
 
 from .config import settings
 from .rabbitmq_consumer import RabbitMQConsumer
-from .models import Rule, UnifiedSensorEvent
+from .models import Rule, UnifiedSensorEvent, ActuatorOverrideRequest
 from .rules_engine import RuleEngine
+from .actuators_client import ActuatorsClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -62,24 +63,44 @@ async def list_rules():
     return rule_engine.list_rules()
 
 
-@app.post("/rules", response_model=Rule, status_code=201)
-async def create_rule(rule: Rule):
-    created = rule_engine.add_rule(rule)
-    return created
+@app.post("/rules")
+async def create_rules(rules: list[Rule]):
+    results = []
 
+    for rule in rules:
+        result = rule_engine.add_rule(rule)
+        results.append(
+            {
+                "rule_id": rule.id,
+                "result": result,
+            }
+        )
 
-# -------------------------------
-# Sensor API
-# -------------------------------
-
-
-@app.post("/sensor-events")
-async def handle_sensor_event(event: UnifiedSensorEvent):
-    triggered = await rule_engine.process_event(event)
     return {
-        "sensor_id": event.sensor_id,
-        "captured_at": event.captured_at,
-        "triggered_rules": triggered,
+        "processed_rules": len(rules),
+        "results": results,
+    }
+
+# -------------------------------
+# Actuator API
+# -------------------------------
+
+@app.get("/actuator-modes")
+async def list_actuator_modes():
+    return rule_engine.list_actuator_modes()
+
+
+@app.post("/actuator-control")
+async def set_actuator_control(request: ActuatorOverrideRequest):
+    if not rule_engine.has_actuator(request.actuator):
+        raise HTTPException(status_code=404, detail="Unknown actuator")
+
+    await rule_engine.set_actuator_mode(request.actuator, request.mode)
+
+    return {
+        "actuator": request.actuator,
+        "mode": request.mode.value,
+        "status": "ok",
     }
 
 
