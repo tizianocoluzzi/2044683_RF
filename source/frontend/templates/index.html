@@ -685,7 +685,7 @@ function openAddRule() {
 function openEditRule(index) {
   const r = rules[index];
   document.getElementById('modalTitle').textContent  = 'Edit Rule';
-  document.getElementById('editRuleId').value        = index;
+  document.getElementById('editRuleId').value        = r.id;
   document.getElementById('rSensor').value           = r.sensor;
   document.getElementById('rMetric').value           = r.metric;
   document.getElementById('rSubsystem').value        = r.subsystem || '';
@@ -718,24 +718,34 @@ async function saveRule() {
 
   const payload = { sensor, metric, subsystem, operator, value, actuator, action, is_active };
 
+  const editId = document.getElementById('editRuleId').value;
   try {
-    const resp = await fetch('/api/rules', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let resp;
+    if (editId !== '') {
+      resp = await fetch('/api/rules/' + encodeURIComponent(editId), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      resp = await fetch('/api/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
       alert('Rules service error: ' + (err.detail || resp.status));
       return;
     }
     const saved = await resp.json();
-    // persist locally using the id returned by the service (or a fallback name)
-    const name = 'rule_' + (saved.id ?? (rules.length + 1));
-    const editId = document.getElementById('editRuleId').value;
     if (editId !== '') {
-      rules[parseInt(editId)] = { ...saved, name };
+      const idx = rules.findIndex(r => String(r.id) === String(editId));
+      if (idx !== -1) rules[idx] = { ...saved, name: rules[idx].name };
+      else rules.push({ ...saved, name: 'rule_' + saved.id });
     } else {
+      const name = 'rule_' + (saved.id ?? (rules.length + 1));
       rules.push({ ...saved, name });
     }
   } catch (e) {
@@ -748,16 +758,37 @@ async function saveRule() {
   renderRules();
 }
 
-function deleteRule(index) {
+async function deleteRule(index) {
   if (!confirm('Delete this rule?')) return;
+  const rule = rules[index];
+  if (rule && rule.id) {
+    try {
+      const resp = await fetch('/api/rules/' + encodeURIComponent(rule.id), { method: 'DELETE' });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        alert('Delete error: ' + (err.detail || resp.status));
+        return;
+      }
+    } catch (e) {
+      alert('Could not reach the rules service: ' + e);
+      return;
+    }
+  }
   rules.splice(index, 1);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
   renderRules();
 }
 
-function clearAllRules() {
+async function clearAllRules() {
   if (rules.length === 0) return;
   if (!confirm('Delete all rules?')) return;
+  for (const rule of rules) {
+    if (rule.id) {
+      try {
+        await fetch('/api/rules/' + encodeURIComponent(rule.id), { method: 'DELETE' });
+      } catch (_) {}
+    }
+  }
   rules = [];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
   renderRules();

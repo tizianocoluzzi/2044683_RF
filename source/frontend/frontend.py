@@ -130,31 +130,30 @@ async def api_actuators():
 
 @app.post("/api/actuators/{actuator_id}/manual", summary="Manual actuator override")
 async def manual_actuator_override(actuator_id: str, request: Request):
-    """Fan-out a manual actuator command to both rule-engine and rules-service.
-    NOTE: endpoint paths and payload parameters are not yet finalised."""
+    """Fan-out a manual actuator command to the rule-engine (set mode) and
+    disable any related rules in the rules-service."""
     body = await request.json()
-    # TODO: finalise payload structure once downstream endpoints are defined
-    payload = {"actuator_id": actuator_id, **body}
+    mode = body.get("state", "OFF")  # "ON" | "OFF" | "AUTO"
 
     errors: list[str] = []
     results: dict = {}
     async with httpx.AsyncClient() as client:
-        # POST to rule-engine – TODO: finalise endpoint path
+        # POST /actuator-control on the rule-engine to override the actuator mode
         try:
             re_resp = await client.post(
-                f"{RULE_ENGINE_URL}/actuators/manual",
-                json=payload,
+                f"{RULE_ENGINE_URL}/actuator-control",
+                json={"actuator": actuator_id, "mode": mode},
                 timeout=10.0,
             )
             results["rule_engine"] = re_resp.json() if re_resp.content else {}
         except httpx.RequestError as e:
             errors.append(f"rule-engine unreachable: {e}")
 
-        # POST to rules-service – TODO: finalise endpoint path
+        # PATCH /api/rules/actuator/{actuator_id}/disable on the rules-service
+        # to deactivate all rules that target this actuator
         try:
-            rs_resp = await client.post(
-                f"{RULES_SERVICE_URL}/api/actuators/manual",
-                json=payload,
+            rs_resp = await client.patch(
+                f"{RULES_SERVICE_URL}/api/rules/actuator/{actuator_id}/disable",
                 timeout=10.0,
             )
             results["rules_service"] = rs_resp.json() if rs_resp.content else {}
@@ -176,6 +175,38 @@ async def proxy_create_rule(request: Request):
             resp = await client.post(
                 f"{RULES_SERVICE_URL}/api/rules/",
                 json=body,
+                timeout=10.0,
+            )
+            body = await request.json()
+            print("Forwarding to rules_service:", body)  # add this
+            return JSONResponse(status_code=resp.status_code, content=resp.json())
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=502, detail=f"Rules service unreachable: {e}")
+
+
+@app.put("/api/rules/{rule_id}", summary="Update a rule (proxied to rules_service)")
+async def proxy_update_rule(rule_id: int, request: Request):
+    """Forward an update payload to the rules_service PUT /api/rules/{rule_id}."""
+    body = await request.json()
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.put(
+                f"{RULES_SERVICE_URL}/api/rules/{rule_id}",
+                json=body,
+                timeout=10.0,
+            )
+            return JSONResponse(status_code=resp.status_code, content=resp.json())
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=502, detail=f"Rules service unreachable: {e}")
+
+
+@app.delete("/api/rules/{rule_id}", summary="Delete a rule (proxied to rules_service)")
+async def proxy_delete_rule(rule_id: int):
+    """Forward a delete request to the rules_service DELETE /api/rules/{rule_id}."""
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.delete(
+                f"{RULES_SERVICE_URL}/api/rules/{rule_id}",
                 timeout=10.0,
             )
             return JSONResponse(status_code=resp.status_code, content=resp.json())

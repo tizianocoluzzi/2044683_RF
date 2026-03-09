@@ -1,7 +1,5 @@
 # app/api/rules.py
-from http.client import HTTPException
-
-from fastapi import APIRouter, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 from typing import List
@@ -9,11 +7,12 @@ from typing import List
 from app.db.database import get_db
 from app.schemas.rule import RuleCreate, RuleResponse
 from app.crud import rule as crud_rule
+import os
 import requests
 
 router = APIRouter(prefix="/api/rules", tags=["Rules"])
 
-ENGINE_URL = "http://localhost:8000/rules"
+ENGINE_URL = os.getenv("RULE_ENGINE_URL", "http://rule-engine:8000") + "/rules"
 
 def send_rules_to_engine(rules_data):
     """Invia le regole aggiornate all'altro microservizio"""
