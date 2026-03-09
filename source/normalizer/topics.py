@@ -22,7 +22,7 @@ class TopicPower(BaseModel):
         ]
 
         return CommonTelemetry(
-            sensor_id=self.topic,
+            sensor_id=self.topic.removeprefix("mars/telemetry/"),
             captured_at=self.event_time,
             metrics=[
                 SubsystemMetrics(subsystem=self.subsystem, measurements=measurements)
@@ -61,7 +61,7 @@ class TopicEnvironment(BaseModel):
         ]
 
         return CommonTelemetry(
-            sensor_id=self.topic,
+            sensor_id=self.topic.removeprefix("mars/telemetry/"),
             captured_at=self.event_time,
             status=self.status,
             metrics=[
@@ -85,7 +85,7 @@ class TopicThermalLoop(BaseModel):
         ]
 
         return CommonTelemetry(
-            sensor_id=self.topic,
+            sensor_id=self.topic.removeprefix("mars/telemetry/"),
             captured_at=self.event_time,
             status=self.status,
             metrics=[
@@ -109,7 +109,7 @@ class TopicAirlock(BaseModel):
         ]
 
         return CommonTelemetry(
-            sensor_id=self.topic,
+            sensor_id=self.topic.removeprefix("mars/telemetry/"),
             captured_at=self.event_time,
             metrics=[
                 SubsystemMetrics(subsystem=self.airlock_id, measurements=measurements)

@@ -10,9 +10,9 @@
 
     :root {
       --mars-deep:    #0a0603;
-      --mars-dark:    rgba(18, 12, 8, 0.85);
-      --mars-surface: rgba(26, 16, 10, 0.75);
-      --mars-panel:   rgba(31, 20, 16, 0.80);
+      --mars-dark:    rgba(18, 12, 8, 0.90);
+      --mars-surface: rgba(26, 16, 10, 0.80);
+      --mars-panel:   rgba(31, 20, 16, 0.85);
       --mars-border:  #6b2d1a;
       --mars-glow:    #c0392b;
       --mars-bright:  #e74c3c;
@@ -168,7 +168,7 @@
     }
     .chart-panel {
       flex: 1;
-      background: var(--mars-dark);
+      background: var(--mars-panel);
       border: 1px solid var(--mars-border);
       border-radius: 3px;
       padding: 0.65rem;
@@ -559,18 +559,18 @@
         <div class="panel-label">Actuators</div>
         <div id="actuatorMini">
           {% for aid, data in actuators.items() %}
-          <div class="arow" style="flex-direction:column;align-items:flex-start;gap:.1rem">
+          <div class="arow" style="flex-direction:column;align-items:flex-start;gap:.25rem">
             <span class="a-id" style="font-size:.65rem">{{ aid }}</span>
-            <div style="display:flex;align-items:center;gap:.3rem">
+            <div style="display:flex;align-items:center;gap:.35rem">
               <span class="state-pill {{ data.state | lower }}">{{ data.state }}</span>
-              <button data-aid="{{ aid }}" onclick="toggleManualCtrl(this.dataset.aid)" style="font-size:.58rem;padding:.08rem .3rem">manual</button>
-            </div>
-            <div class="manual-ctrl" id="manual-ctrl-{{ aid }}">
-              <select id="manual-state-{{ aid }}">
+              <select id="mode-{{ aid }}" onchange="setMode('{{ aid }}', this.value)"
+                style="font-family:'Share Tech Mono',monospace;font-size:.63rem;padding:.08rem .3rem;
+                       background:var(--mars-dark);border:1px solid var(--mars-border);
+                       border-radius:2px;color:var(--mars-text);cursor:pointer">
+                <option value="AUTO">AUTO</option>
                 <option value="ON">ON</option>
                 <option value="OFF">OFF</option>
               </select>
-              <button class="primary" data-aid="{{ aid }}" onclick="sendManual(this.dataset.aid)" style="font-size:.58rem;padding:.08rem .3rem">send</button>
             </div>
           </div>
           {% endfor %}
@@ -591,7 +591,7 @@
         </div>
       </div>
       <div class="rule-list" id="ruleList"></div>
-      <button class="danger" style="width:100%;margin-top:auto" onclick="clearAllRules()">clear all</button>
+      <button class="danger" style="width:100%;margin-top:auto" onclick="openClearModal()">clear all</button>
     </div>
   </aside>
 
@@ -605,16 +605,16 @@
     <div class="form-grid">
       <div class="form-row">
         <label>Sensor ID *</label>
-        <input id="rSensor" type="text" placeholder="e.g. solar_array" />
+        <select id="rSensor" onchange="onSensorChange()"></select>
       </div>
       <div class="form-row">
         <label>Metric *</label>
-        <input id="rMetric" type="text" placeholder="e.g. temperature" />
+        <select id="rMetric"></select>
       </div>
     </div>
     <div class="form-row">
       <label>Subsystem (optional)</label>
-      <input id="rSubsystem" type="text" placeholder="e.g. thermal" />
+      <select id="rSubsystem"></select>
     </div>
     <div class="form-grid">
       <div class="form-row">
@@ -635,7 +635,7 @@
     <div class="form-grid">
       <div class="form-row">
         <label>Actuator *</label>
-        <input id="rActuator" type="text" placeholder="e.g. cooling_fan" />
+        <select id="rActuator"></select>
       </div>
       <div class="form-row">
         <label>Action *</label>
@@ -657,43 +657,115 @@
   </div>
 </div>
 
+<!-- ── Delete Rule Confirm Modal ──────────────────────────────────── -->
+<div class="modal-backdrop" id="deleteModal">
+  <div class="modal" style="max-width:340px">
+    <h3>Delete Rule</h3>
+    <p id="deleteModalDesc" style="font-size:.8rem;color:var(--mars-text);margin-bottom:1.1rem;line-height:1.5"></p>
+    <div class="modal-footer">
+      <button onclick="closeDeleteModal()">Cancel</button>
+      <button class="danger" onclick="confirmDeleteRule()">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Clear All Confirm Modal ─────────────────────────────────────── -->
+<div class="modal-backdrop" id="clearModal">
+  <div class="modal" style="max-width:320px">
+    <h3>Clear All Rules</h3>
+    <p style="font-size:.8rem;color:var(--mars-text);margin-bottom:1.1rem;line-height:1.5">This will permanently delete all <span id="clearModalCount"></span> rules. This action cannot be undone.</p>
+    <div class="modal-footer">
+      <button onclick="closeClearModal()">Cancel</button>
+      <button class="danger" onclick="confirmClearAll()">Delete All</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── State ───────────────────────────────────────────────────────────
 const STORAGE_KEY = 'mars_rules';
 let rules = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+let latestSensors  = {};
+let latestActuators = {};
+
+// ── Rule form helpers ───────────────────────────────────────────────
+function _setOptions(selectId, options, selected) {
+  const el = document.getElementById(selectId);
+  if (!el) return;
+  el.innerHTML = options.map(o =>
+    `<option value="${esc(o)}"${o === selected ? ' selected' : ''}>${esc(o)}</option>`
+  ).join('');
+}
+
+function populateRuleSelects(selectedSensor, selectedMetric, selectedSubsystem, selectedActuator) {
+  const sensors  = Object.keys(latestSensors).sort();
+  const actuators = Object.keys(latestActuators).sort();
+  _setOptions('rSensor',  sensors,   selectedSensor  || sensors[0]  || '');
+  _setOptions('rActuator', actuators, selectedActuator || actuators[0] || '');
+  _populateMetricSubsystem(selectedSensor || sensors[0] || '', selectedMetric, selectedSubsystem);
+}
+
+function _populateMetricSubsystem(sid, selectedMetric, selectedSubsystem) {
+  const data = latestSensors[sid];
+  const metrics    = [];
+  const subsystems = [];
+  if (data) {
+    for (const sub of (data.metrics || [])) {
+      if (sub.subsystem && !subsystems.includes(sub.subsystem)) subsystems.push(sub.subsystem);
+      for (const m of (sub.measurements || [])) {
+        if (m.metric && !metrics.includes(m.metric)) metrics.push(m.metric);
+      }
+    }
+  }
+  if (metrics.length === 0) metrics.push(selectedMetric || '');
+  _setOptions('rMetric', metrics, selectedMetric || metrics[0] || '');
+  const subOpts = ['', ...subsystems];
+  _setOptions('rSubsystem', subOpts, selectedSubsystem || '');
+}
+
+function onSensorChange() {
+  const sid = document.getElementById('rSensor').value;
+  _populateMetricSubsystem(sid, '', '');
+}
 
 // ── Rule panel ──────────────────────────────────────────────────────
+async function _refreshSensorActuatorCache() {
+  try {
+    const [sr, ar] = await Promise.all([fetch('/api/sensors'), fetch('/api/actuators')]);
+    latestSensors   = await sr.json();
+    latestActuators = await ar.json();
+  } catch (_) {}
+}
+
 function toggleRulePanel() {
   document.getElementById('rulePanel').classList.toggle('open');
   renderRules();
 }
 
-function openAddRule() {
+async function openAddRule() {
   document.getElementById('rulePanel').classList.add('open');
   renderRules();
   document.getElementById('modalTitle').textContent = 'Add Rule';
   document.getElementById('editRuleId').value = '';
-  ['rSensor','rMetric','rSubsystem','rValue','rActuator'].forEach(id => {
-    document.getElementById(id).value = '';
-  });
+  document.getElementById('rValue').value = '';
   document.getElementById('rOperator').value = '<';
   document.getElementById('rAction').value   = 'ON';
   document.getElementById('rActive').checked = true;
+  await _refreshSensorActuatorCache();
+  populateRuleSelects();
   document.getElementById('ruleModal').classList.add('open');
 }
 
-function openEditRule(index) {
+async function openEditRule(index) {
   const r = rules[index];
   document.getElementById('modalTitle').textContent  = 'Edit Rule';
   document.getElementById('editRuleId').value        = r.id;
-  document.getElementById('rSensor').value           = r.sensor;
-  document.getElementById('rMetric').value           = r.metric;
-  document.getElementById('rSubsystem').value        = r.subsystem || '';
   document.getElementById('rOperator').value         = r.operator;
   document.getElementById('rValue').value            = r.value;
-  document.getElementById('rActuator').value         = r.actuator;
   document.getElementById('rAction').value           = r.action;
   document.getElementById('rActive').checked         = r.is_active !== false;
+  await _refreshSensorActuatorCache();
+  populateRuleSelects(r.sensor, r.metric, r.subsystem || '', r.actuator);
   document.getElementById('ruleModal').classList.add('open');
 }
 
@@ -702,12 +774,12 @@ function closeModal() {
 }
 
 async function saveRule() {
-  const sensor    = document.getElementById('rSensor').value.trim();
-  const metric    = document.getElementById('rMetric').value.trim();
-  const subsystem = document.getElementById('rSubsystem').value.trim() || null;
+  const sensor    = document.getElementById('rSensor').value;
+  const metric    = document.getElementById('rMetric').value;
+  const subsystem = document.getElementById('rSubsystem').value || null;
   const operator  = document.getElementById('rOperator').value;
   const value     = parseFloat(document.getElementById('rValue').value);
-  const actuator  = document.getElementById('rActuator').value.trim();
+  const actuator  = document.getElementById('rActuator').value;
   const action    = document.getElementById('rAction').value;
   const is_active = document.getElementById('rActive').checked;
 
@@ -758,8 +830,29 @@ async function saveRule() {
   renderRules();
 }
 
-async function deleteRule(index) {
-  if (!confirm('Delete this rule?')) return;
+let _pendingDeleteIndex = null;
+
+function openDeleteModal(index) {
+  const r = rules[index];
+  _pendingDeleteIndex = index;
+  const desc = r
+    ? `Rule <b>${esc(r.name || ('rule_' + r.id))}</b>:<br>
+       if ${esc(r.sensor)}.${esc(r.metric)} ${esc(r.operator)} ${esc(String(r.value))}
+       → ${esc(r.actuator)} <b>${esc(r.action)}</b>`
+    : 'Are you sure?';
+  document.getElementById('deleteModalDesc').innerHTML = desc;
+  document.getElementById('deleteModal').classList.add('open');
+}
+
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.remove('open');
+  _pendingDeleteIndex = null;
+}
+
+async function confirmDeleteRule() {
+  const index = _pendingDeleteIndex;
+  closeDeleteModal();
+  if (index === null) return;
   const rule = rules[index];
   if (rule && rule.id) {
     try {
@@ -779,9 +872,18 @@ async function deleteRule(index) {
   renderRules();
 }
 
-async function clearAllRules() {
+function openClearModal() {
   if (rules.length === 0) return;
-  if (!confirm('Delete all rules?')) return;
+  document.getElementById('clearModalCount').textContent = rules.length;
+  document.getElementById('clearModal').classList.add('open');
+}
+
+function closeClearModal() {
+  document.getElementById('clearModal').classList.remove('open');
+}
+
+async function confirmClearAll() {
+  closeClearModal();
   for (const rule of rules) {
     if (rule.id) {
       try {
@@ -792,6 +894,14 @@ async function clearAllRules() {
   rules = [];
   localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
   renderRules();
+}
+
+async function deleteRule(index) {
+  openDeleteModal(index);
+}
+
+async function clearAllRules() {
+  openClearModal();
 }
 
 function renderRules() {
@@ -831,11 +941,18 @@ const chartHistory = {};
 
 async function pollData() {
   try {
-    const [sr, ar] = await Promise.all([fetch('/api/sensors'), fetch('/api/actuators')]);
+    const [sr, ar, mr] = await Promise.all([
+      fetch('/api/sensors'),
+      fetch('/api/actuators'),
+      fetch('/api/actuator-modes'),
+    ]);
     const sensors   = await sr.json();
     const actuators = await ar.json();
+    const modes     = await mr.json();
+    latestSensors   = sensors;
+    latestActuators = actuators;
     updateSensorGrid(sensors);
-    updateActuators(actuators);
+    updateActuators(actuators, modes);
     updateChartHistory(sensors);
     refreshChart();
   } catch (_) {}
@@ -878,79 +995,43 @@ function updateSensorGrid(sensors) {
   }).join('');
 }
 
-function updateActuators(actuators) {
+function updateActuators(actuators, modes) {
   const ids = Object.keys(actuators).sort();
 
   const mini = document.getElementById('actuatorMini');
   if (!mini) return;
 
-  // snapshot open state and selected values before rebuild
-  const openPanels = {};
-  const selectedStates = {};
-  mini.querySelectorAll('.manual-ctrl').forEach(el => {
-    const aid = el.id.replace('manual-ctrl-', '');
-    openPanels[aid] = el.classList.contains('open');
-    const sel = document.getElementById('manual-state-' + aid);
-    if (sel) selectedStates[aid] = sel.value;
-  });
-
   mini.innerHTML = ids.map(aid => {
     const state = actuators[aid].state || 'OFF';
-    return `<div class="arow" style="flex-direction:column;align-items:flex-start;gap:.1rem">
+    const mode  = (modes && modes[aid]) ? modes[aid] : 'AUTO';
+    return `<div class="arow" style="flex-direction:column;align-items:flex-start;gap:.25rem">
       <span class="a-id" style="font-size:.68rem">${esc(aid)}</span>
-      <div style="display:flex;align-items:center;gap:.3rem">
+      <div style="display:flex;align-items:center;gap:.35rem">
         <span class="state-pill ${state.toLowerCase()}">${esc(state)}</span>
-        <button data-aid="${esc(aid)}" onclick="toggleManualCtrl(this.dataset.aid)" style="font-size:.6rem;padding:.1rem .35rem">manual</button>
-      </div>
-      <div class="manual-ctrl" id="manual-ctrl-${esc(aid)}">
-        <select id="manual-state-${esc(aid)}">
-          <option value="ON">ON</option>
-          <option value="OFF">OFF</option>
+        <select id="mode-${esc(aid)}" onchange="setMode('${esc(aid)}', this.value)"
+          style="font-family:'Share Tech Mono',monospace;font-size:.63rem;padding:.08rem .3rem;
+                 background:var(--mars-dark);border:1px solid var(--mars-border);
+                 border-radius:2px;color:var(--mars-text);cursor:pointer">
+          <option value="AUTO"${mode==='AUTO'?' selected':''}>AUTO</option>
+          <option value="ON"${mode==='ON'?' selected':''}>ON</option>
+          <option value="OFF"${mode==='OFF'?' selected':''}>OFF</option>
         </select>
-        <button class="primary" data-aid="${esc(aid)}" onclick="sendManual(this.dataset.aid)" style="font-size:.58rem;padding:.08rem .3rem">send</button>
       </div>
     </div>`;
   }).join('');
-
-  // restore open state and selected values
-  ids.forEach(aid => {
-    if (openPanels[aid]) {
-      const el = document.getElementById('manual-ctrl-' + aid);
-      if (el) el.classList.add('open');
-    }
-    if (selectedStates[aid]) {
-      const sel = document.getElementById('manual-state-' + aid);
-      if (sel) sel.value = selectedStates[aid];
-    }
-  });
 }
 
-function toggleManualCtrl(aid) {
-  const el = document.getElementById('manual-ctrl-' + aid);
-  if (el) el.classList.toggle('open');
-}
-
-async function sendManual(aid) {
-  const stateEl = document.getElementById('manual-state-' + aid);
-  const state = stateEl ? stateEl.value : 'ON';
-  // TODO: extend payload once downstream endpoint parameters are finalised
-  const payload = { state };
+async function setMode(aid, mode) {
   try {
     const resp = await fetch('/api/actuators/' + encodeURIComponent(aid) + '/manual', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ state: mode }),
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      alert('Manual override error: ' + (err.detail || resp.status));
-      return;
+      alert('Mode change error: ' + (err.detail || resp.status));
     }
-    const result = await resp.json();
-    if (result.errors && result.errors.length > 0) {
-      alert('Sent with warnings: ' + result.errors.join('; '));
-    }
-    toggleManualCtrl(aid);
   } catch (e) {
     alert('Request failed: ' + e);
   }

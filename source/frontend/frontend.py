@@ -36,7 +36,7 @@ latest_actuators: dict[str, dict] = {}
 def _on_sensor(ch, method, properties, body):
     try:
         msg = json.loads(body)
-        sensor_id = msg.get("sensor_id", "unknown").removeprefix("mars/telemetry/")
+        sensor_id = msg.get("sensor_id", "unknown")
         msg["sensor_id"] = sensor_id
         with _lock:
             latest_sensors[sensor_id] = msg
@@ -127,6 +127,17 @@ async def api_actuators():
     """Return the latest state for every actuator."""
     with _lock:
         return dict(sorted(latest_actuators.items()))
+
+@app.get("/api/actuator-modes", summary="Actuator modes from rule-engine")
+async def proxy_actuator_modes():
+    """Proxy GET /actuator-modes from the rule-engine."""
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(f"{RULE_ENGINE_URL}/actuator-modes", timeout=5.0)
+            return JSONResponse(status_code=resp.status_code, content=resp.json())
+        except httpx.RequestError:
+            return JSONResponse(status_code=200, content={})
+
 
 @app.post("/api/actuators/{actuator_id}/manual", summary="Manual actuator override")
 async def manual_actuator_override(actuator_id: str, request: Request):

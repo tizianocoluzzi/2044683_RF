@@ -109,11 +109,6 @@ class RuleEngine:
     # Evaluation functions
     # --------------------------
     @staticmethod
-    def _normalize_sensor_name(name: str) -> str:
-        return name.removeprefix("mars/telemetry/")
-
-
-    @staticmethod
     def _match_condition(sensor_value: float, rule: Rule) -> bool:
         if rule.operator == Operator.gt:
             return sensor_value > rule.value
@@ -255,27 +250,21 @@ class RuleEngine:
 
 
         for rule in self._rules:
-            normalized_rule_sensor = self._normalize_sensor_name(rule.sensor)
-            normalized_event_sensor = self._normalize_sensor_name(event.sensor_id)
 
             logger.info(
-                "Rule pre-check: rule_id=%s rule_sensor=%s incoming_sensor=%s normalized_rule_sensor=%s normalized_event_sensor=%s",
+                "Rule pre-check: rule_id=%s rule_sensor=%s incoming_sensor=%s",
                 rule.id,
                 rule.sensor,
                 event.sensor_id,
-                normalized_rule_sensor,
-                normalized_event_sensor,
             )
 
 
-            if normalized_rule_sensor != normalized_event_sensor:
+            if rule.sensor != event.sensor_id:
                 logger.info(
-                    "Rule id=%s skipped before matching: sensor mismatch (rule=%s event=%s normalized_rule=%s normalized_event=%s)",
+                    "Rule id=%s skipped before matching: sensor mismatch (rule=%s event=%s)",
                     rule.id,
                     rule.sensor,
                     event.sensor_id,
-                    normalized_rule_sensor,
-                    normalized_event_sensor,
                 )
                 continue
 
