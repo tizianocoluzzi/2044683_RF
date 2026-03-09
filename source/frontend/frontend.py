@@ -11,6 +11,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 # ── configuration ────────────────────────────────────────────────────
@@ -21,7 +22,8 @@ RABBITMQ_PASSWORD = os.getenv("RABBITMQ_PASSWORD", "guest")
 
 SENSOR_QUEUE      = "sensors"
 ACTUATOR_QUEUE    = "actuators"
-RULES_SERVICE_URL = os.getenv("RULES_SERVICE_URL", "http://localhost:8000")
+RULES_SERVICE_URL = os.getenv("RULES_SERVICE_URL", "http://localhost:8001")
+RULE_ENGINE_URL   = os.getenv("RULE_ENGINE_URL",   "http://localhost:8000")
 
 # ── shared state ─────────────────────────────────────────────────────
 _lock            = threading.Lock()
@@ -96,6 +98,7 @@ app = FastAPI(
 )
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+app.mount("/image", StaticFiles(directory=str(Path(__file__).parent / "image")), name="image")
 
 
 # ── routes ────────────────────────────────────────────────────────────
@@ -124,6 +127,44 @@ async def api_actuators():
     """Return the latest state for every actuator."""
     with _lock:
         return dict(sorted(latest_actuators.items()))
+
+@app.post("/api/actuators/{actuator_id}/manual", summary="Manual actuator override")
+async def manual_actuator_override(actuator_id: str, request: Request):
+    """Fan-out a manual actuator command to both rule-engine and rules-service.
+    NOTE: endpoint paths and payload parameters are not yet finalised."""
+    body = await request.json()
+    # TODO: finalise payload structure once downstream endpoints are defined
+    payload = {"actuator_id": actuator_id, **body}
+
+    errors: list[str] = []
+    results: dict = {}
+    async with httpx.AsyncClient() as client:
+        # POST to rule-engine – TODO: finalise endpoint path
+        try:
+            re_resp = await client.post(
+                f"{RULE_ENGINE_URL}/actuators/manual",
+                json=payload,
+                timeout=10.0,
+            )
+            results["rule_engine"] = re_resp.json() if re_resp.content else {}
+        except httpx.RequestError as e:
+            errors.append(f"rule-engine unreachable: {e}")
+
+        # POST to rules-service – TODO: finalise endpoint path
+        try:
+            rs_resp = await client.post(
+                f"{RULES_SERVICE_URL}/api/actuators/manual",
+                json=payload,
+                timeout=10.0,
+            )
+            results["rules_service"] = rs_resp.json() if rs_resp.content else {}
+        except httpx.RequestError as e:
+            errors.append(f"rules-service unreachable: {e}")
+
+    if errors and not results:
+        raise HTTPException(status_code=502, detail="; ".join(errors))
+    return {"results": results, "errors": errors}
+
 
 
 @app.post("/api/rules", summary="Create a rule (proxied to rules_service)")

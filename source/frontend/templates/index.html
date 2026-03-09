@@ -3,98 +3,205 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mars Base – Telemetry Dashboard</title>
+  <title>MARS BASE ALPHA — TELEMETRY CORE</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+    :root {
+      --mars-deep:    #0a0603;
+      --mars-dark:    rgba(18, 12, 8, 0.85);
+      --mars-surface: rgba(26, 16, 10, 0.75);
+      --mars-panel:   rgba(31, 20, 16, 0.80);
+      --mars-border:  #6b2d1a;
+      --mars-glow:    #c0392b;
+      --mars-bright:  #e74c3c;
+      --mars-hot:     #ff6b47;
+      --mars-dust:    #a0522d;
+      --mars-sand:    #cd853f;
+      --mars-amber:   #e8a010;
+      --mars-dim:     #5a3020;
+      --mars-text:    #eeb5a4;
+      --mars-muted:   #7a4a38;
+      --ok-color:     #27ae60;
+      --warn-color:   #e8a010;
+      --err-color:    #e74c3c;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: #0d1117;
-      color: #e6edf3;
+      font-family: 'Share Tech Mono', 'Courier New', monospace;
+      background: var(--mars-deep);
+      color: var(--mars-text);
       height: 100vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      background-image:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0,0,0,0.15) 2px,
+          rgba(0,0,0,0.15) 4px
+        ),
+        url('/image/mars.jpg');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
     }
 
-    /* ── outer shell: side-panel | main | rule-panel ── */
+    /* ── header bar ── */
+    .header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.35rem 1rem;
+      background: var(--mars-dark);
+      border-bottom: 1px solid var(--mars-border);
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .header-bar::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(192,57,43,0.06) 50%, transparent 100%);
+      pointer-events: none;
+    }
+    .header-title {
+      font-family: 'Orbitron', monospace;
+      font-weight: 900;
+      font-size: 1.1rem;
+      color: var(--mars-bright);
+      letter-spacing: 0.2em;
+      text-shadow: 0 0 12px rgba(231,76,60,0.7), 0 0 30px rgba(231,76,60,0.3);
+      text-transform: uppercase;
+    }
+    .header-subtitle {
+      font-size: 0.62rem;
+      color: var(--mars-muted);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 1.2rem;
+    }
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
+      color: var(--mars-muted);
+      text-transform: uppercase;
+    }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--ok-color);
+      box-shadow: 0 0 6px var(--ok-color);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+    #clockDisplay {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.75rem;
+      color: var(--mars-hot);
+      letter-spacing: 0.1em;
+    }
+
+    /* ── outer shell ── */
     .shell {
       display: flex;
       flex: 1;
-      gap: 0.65rem;
-      padding: 0.65rem;
+      gap: 0.55rem;
+      padding: 0.55rem;
       overflow: hidden;
     }
-
-    /* ── side panel ── */
-    .side-panel {
-      width: 42px;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 10px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 1rem 0;
-      gap: 0.75rem;
-      flex-shrink: 0;
-    }
-    .dot {
-      width: 12px; height: 12px;
-      border-radius: 50%;
-      background: #30363d;
-      cursor: pointer;
-      transition: background .2s;
-    }
-    .dot.active { background: #58a6ff; }
-    .dot:hover  { background: #79c0ff; }
 
     /* ── main column ── */
     .main {
       flex: 1;
       display: flex;
       flex-direction: column;
-      gap: 0.65rem;
+      gap: 0.55rem;
       overflow: hidden;
       min-width: 0;
     }
 
-    /* top row: sensors (left big) */
+    /* ── sensors panel ── */
     .sensors-panel {
       flex: 1;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 10px;
-      padding: 0.75rem;
+      background: var(--mars-panel);
+      border: 1px solid var(--mars-border);
+      border-radius: 3px;
+      padding: 0.65rem;
       overflow-y: auto;
       min-height: 0;
+      position: relative;
+    }
+    .sensors-panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--mars-glow), transparent);
+      opacity: 0.5;
+      pointer-events: none;
     }
 
-    /* bottom row: chart + actuator state */
+    /* ── bottom row ── */
     .bottom-row {
       display: flex;
-      gap: 0.65rem;
-      height: 320px;
+      gap: 0.55rem;
+      height: 350px;
       flex-shrink: 0;
     }
     .chart-panel {
       flex: 1;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 10px;
-      padding: 0.75rem;
+      background: var(--mars-dark);
+      border: 1px solid var(--mars-border);
+      border-radius: 3px;
+      padding: 0.65rem;
       min-width: 0;
       position: relative;
     }
+    .chart-panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--mars-glow), transparent);
+      opacity: 0.5;
+      pointer-events: none;
+    }
     .actuator-state-panel {
-      width: 130px;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 10px;
-      padding: 0.75rem;
+      width: 148px;
+      background: var(--mars-panel);
+      border: 1px solid var(--mars-border);
+      border-radius: 3px;
+      padding: 0.65rem;
       flex-shrink: 0;
       overflow-y: auto;
+      position: relative;
+    }
+    .actuator-state-panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--mars-glow), transparent);
+      opacity: 0.5;
+      pointer-events: none;
     }
 
     /* ── rule panel (right column, toggleable) ── */
@@ -104,177 +211,296 @@
       transition: width 0.25s ease;
       flex-shrink: 0;
     }
-    .rule-panel.open { width: 260px; }
+    .rule-panel.open { width: 268px; }
     .rule-panel-inner {
-      width: 260px;
+      width: 268px;
       height: 100%;
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 10px;
-      padding: 0.75rem;
+      background: var(--mars-panel);
+      border: 1px solid var(--mars-border);
+      border-radius: 3px;
+      padding: 0.65rem;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      position: relative;
+    }
+    .rule-panel-inner::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--mars-glow), transparent);
+      opacity: 0.5;
+      pointer-events: none;
     }
     .rule-list {
       flex: 1;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: 0.45rem;
       margin-bottom: 0.5rem;
     }
     .rule-card {
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 0.6rem;
+      background: var(--mars-surface);
+      border: 1px solid var(--mars-dim);
+      border-left: 2px solid var(--mars-glow);
+      border-radius: 2px;
+      padding: 0.55rem;
     }
-    .rule-name  { font-size: 0.8rem; font-weight: 600; color: #58a6ff; margin-bottom: 0.25rem; }
-    .rule-desc  { font-size: 0.72rem; color: #8b949e; font-style: italic; margin-bottom: 0.4rem; }
-    .rule-btns  { display: flex; gap: 0.4rem; }
-    .rule-btns button { font-size: 0.7rem; padding: 0.2rem 0.5rem; }
+    .rule-name  { font-size: 0.75rem; font-weight: 700; color: var(--mars-hot); margin-bottom: 0.2rem; letter-spacing: 0.05em; text-transform: uppercase; }
+    .rule-desc  { font-size: 0.67rem; color: var(--mars-muted); font-style: italic; margin-bottom: 0.35rem; }
+    .rule-btns  { display: flex; gap: 0.35rem; }
+    .rule-btns button { font-size: 0.63rem; padding: 0.15rem 0.4rem; }
+
+    /* ── panel labels ── */
+    .panel-label {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.57rem;
+      color: var(--mars-glow);
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      margin-bottom: 0.55rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .panel-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, var(--mars-border), transparent);
+    }
 
     /* ── sensor cards ── */
-    .panel-label {
-      font-size: 0.68rem;
-      color: #8b949e;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      margin-bottom: 0.5rem;
-    }
     .sensor-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-      gap: 0.55rem;
+      gap: 0.5rem;
     }
     .sensor-card {
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-left: 3px solid #30363d;
-      border-radius: 8px;
-      padding: 0.6rem;
+      background: var(--mars-surface);
+      border: 1px solid var(--mars-dim);
+      border-left: 2px solid var(--mars-dim);
+      border-radius: 2px;
+      padding: 0.55rem;
+      transition: border-left-color 0.3s, box-shadow 0.3s;
     }
-    .sensor-card.ok    { border-left-color: #3fb950; }
-    .sensor-card.warn  { border-left-color: #d29922; }
-    .sensor-card.error { border-left-color: #f85149; }
-    .sensor-name { font-size: 0.82rem; font-weight: 600; color: #58a6ff; margin-bottom: 0.2rem; }
-    .sensor-meta { font-size: 0.67rem; color: #8b949e; margin-bottom: 0.3rem; }
+    .sensor-card.ok    { border-left-color: var(--ok-color); }
+    .sensor-card.warn  { border-left-color: var(--warn-color); }
+    .sensor-card.error { border-left-color: var(--err-color); box-shadow: 0 0 8px rgba(231,76,60,0.2); }
+    .sensor-name {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--mars-hot);
+      margin-bottom: 0.18rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .sensor-meta { font-size: 0.6rem; color: var(--mars-muted); margin-bottom: 0.3rem; }
     .mrow {
       display: flex;
       justify-content: space-between;
-      font-size: 0.76rem;
+      font-size: 0.7rem;
       padding: 0.1rem 0;
-      border-bottom: 1px solid #21262d;
+      border-bottom: 1px solid rgba(107,45,26,0.35);
     }
     .mrow:last-child { border-bottom: none; }
-    .m-metric { color: #8b949e; }
-    .m-val    { color: #e6edf3; font-weight: 600; }
-    .m-unit   { color: #484f58; font-size: 0.68rem; }
+    .m-metric { color: var(--mars-muted); }
+    .m-val    { color: var(--mars-text); font-weight: 700; }
+    .m-unit   { color: var(--mars-dim); font-size: 0.6rem; }
 
     /* ── actuator rows ── */
     .arow {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.76rem;
-      padding: 0.25rem 0;
-      border-bottom: 1px solid #21262d;
+      font-size: 0.7rem;
+      padding: 0.22rem 0;
+      border-bottom: 1px solid rgba(107,45,26,0.35);
     }
     .arow:last-child { border-bottom: none; }
-    .a-id { color: #e6edf3; }
+    .a-id { color: var(--mars-text); letter-spacing: 0.03em; }
     .state-pill {
       display: inline-block;
-      padding: 0.08rem 0.45rem;
-      border-radius: 4px;
-      font-size: 0.68rem;
+      padding: 0.05rem 0.38rem;
+      border-radius: 2px;
+      font-size: 0.6rem;
       font-weight: 700;
       text-transform: uppercase;
+      letter-spacing: 0.08em;
     }
-    .state-pill.on  { background: #1a3b24; color: #3fb950; }
-    .state-pill.off { background: #21262d; color: #8b949e; }
+    .state-pill.on  { background: rgba(39,174,96,0.15);  color: var(--ok-color);   border: 1px solid var(--ok-color); }
+    .state-pill.off { background: rgba(90,48,32,0.4);    color: var(--mars-muted); border: 1px solid var(--mars-dim); }
+
+    /* ── manual actuator control ── */
+    .manual-ctrl {
+      display: none;
+      align-items: center;
+      gap: 0.25rem;
+      margin-top: 0.15rem;
+    }
+    .manual-ctrl.open { display: flex; }
+    .manual-ctrl select {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      padding: 0.1rem 0.3rem;
+      background: var(--mars-dark);
+      border: 1px solid var(--mars-border);
+      border-radius: 2px;
+      color: var(--mars-text);
+    }
 
     /* ── badges ── */
     .badge {
       display: inline-block;
-      padding: 0.06rem 0.38rem;
-      border-radius: 4px;
-      font-size: 0.63rem;
+      padding: 0.03rem 0.3rem;
+      border-radius: 2px;
+      font-size: 0.57rem;
       font-weight: 700;
       text-transform: uppercase;
+      letter-spacing: 0.07em;
     }
-    .badge.ok      { background: #1a3b24; color: #3fb950; }
-    .badge.warn    { background: #3b2f14; color: #d29922; }
-    .badge.error   { background: #3b1c1c; color: #f85149; }
-    .badge.default { background: #21262d; color: #8b949e; }
+    .badge.ok      { background: rgba(39,174,96,0.15);  color: var(--ok-color);   border: 1px solid var(--ok-color); }
+    .badge.warn    { background: rgba(232,160,16,0.15); color: var(--warn-color); border: 1px solid var(--warn-color); }
+    .badge.error   { background: rgba(231,76,60,0.15);  color: var(--err-color);  border: 1px solid var(--err-color); }
+    .badge.default { background: rgba(90,48,32,0.4);    color: var(--mars-muted); border: 1px solid var(--mars-dim); }
 
     /* ── buttons ── */
     button {
-      padding: 0.3rem 0.65rem;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      background: #21262d;
-      color: #e6edf3;
-      font-size: 0.78rem;
+      font-family: 'Share Tech Mono', monospace;
+      padding: 0.28rem 0.6rem;
+      border: 1px solid var(--mars-border);
+      border-radius: 2px;
+      background: var(--mars-surface);
+      color: var(--mars-text);
+      font-size: 0.73rem;
       cursor: pointer;
-      transition: background .15s, border-color .15s;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
     }
-    button:hover   { background: #30363d; border-color: #8b949e; }
-    button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
-    button.primary:hover { background: #388bfd; }
-    button.danger  { background: #3b1c1c; border-color: #f85149; color: #f85149; }
-    button.danger:hover  { background: #5a1e1e; }
+    button:hover {
+      background: var(--mars-dim);
+      border-color: var(--mars-hot);
+      color: var(--mars-hot);
+      box-shadow: 0 0 8px rgba(255,107,71,0.25);
+    }
+    button.primary {
+      background: rgba(192,57,43,0.22);
+      border-color: var(--mars-bright);
+      color: var(--mars-hot);
+    }
+    button.primary:hover {
+      background: rgba(192,57,43,0.42);
+      box-shadow: 0 0 10px rgba(192,57,43,0.4);
+    }
+    button.danger {
+      background: rgba(90,20,20,0.4);
+      border-color: var(--err-color);
+      color: var(--err-color);
+    }
+    button.danger:hover {
+      background: rgba(150,20,20,0.5);
+      box-shadow: 0 0 10px rgba(231,76,60,0.3);
+    }
+
+    /* scrollbar styling */
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: var(--mars-dark); }
+    ::-webkit-scrollbar-thumb { background: var(--mars-border); border-radius: 2px; }
 
     /* ── modal ── */
     .modal-backdrop {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.65);
+      background: rgba(0,0,0,.82);
       z-index: 200;
       align-items: center;
       justify-content: center;
+      backdrop-filter: blur(2px);
     }
     .modal-backdrop.open { display: flex; }
     .modal {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 12px;
-      padding: 1.25rem;
-      width: 390px;
+      background: var(--mars-panel);
+      border: 1px solid var(--mars-glow);
+      border-radius: 3px;
+      padding: 1.2rem;
+      width: 400px;
       max-width: 95vw;
+      box-shadow: 0 0 40px rgba(192,57,43,0.3), inset 0 0 60px rgba(0,0,0,0.5);
+      position: relative;
     }
-    .modal h3 { font-size: 1rem; color: #e6edf3; margin-bottom: 1rem; }
-    .form-row { display: flex; flex-direction: column; gap: 0.22rem; margin-bottom: 0.7rem; }
-    .form-row label { font-size: 0.72rem; color: #8b949e; text-transform: uppercase; letter-spacing: .05em; }
+    .modal::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--mars-hot), transparent);
+      pointer-events: none;
+    }
+    .modal h3 {
+      font-family: 'Orbitron', monospace;
+      font-size: 0.85rem;
+      color: var(--mars-hot);
+      margin-bottom: 1rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+    .form-row { display: flex; flex-direction: column; gap: 0.18rem; margin-bottom: 0.62rem; }
+    .form-row label {
+      font-size: 0.6rem;
+      color: var(--mars-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
     .form-row input,
     .form-row select {
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 6px;
-      color: #e6edf3;
-      padding: 0.38rem 0.6rem;
-      font-size: 0.85rem;
+      font-family: 'Share Tech Mono', monospace;
+      background: var(--mars-dark);
+      border: 1px solid var(--mars-border);
+      border-radius: 2px;
+      color: var(--mars-text);
+      padding: 0.32rem 0.52rem;
+      font-size: 0.8rem;
       width: 100%;
     }
     .form-row input:focus,
-    .form-row select:focus { outline: none; border-color: #58a6ff; }
+    .form-row select:focus {
+      outline: none;
+      border-color: var(--mars-bright);
+      box-shadow: 0 0 6px rgba(231,76,60,0.3);
+    }
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
     .modal-footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
 
-    .empty { color: #484f58; font-style: italic; font-size: 0.8rem; padding: 0.4rem 0; }
+    .empty {
+      color: var(--mars-dim);
+      font-style: italic;
+      font-size: 0.73rem;
+      padding: 0.4rem 0;
+      letter-spacing: 0.05em;
+    }
   </style>
 </head>
 <body>
 
-<div class="shell">
+<!-- ── Header bar ──────────────────────────────────────────────────── -->
+<div class="header-bar">
+  <div>
+    <div class="header-title">&#9679; Mars Base Alpha</div>
+    <div class="header-subtitle">Telemetry Core &mdash; Survival Operations Center</div>
+  </div>
+  <div class="header-status">
+    <!--<div class="status-indicator"><div class="status-dot"></div>LINK ACTIVE</div>
+    <div class="status-indicator"><div class="status-dot" style="background:var(--mars-amber);box-shadow:0 0 6px var(--mars-amber);animation-delay:.7s"></div>LIFE SUPPORT</div>
+  --><div id="clockDisplay">--:--:--</div>
+  </div>
+</div>
 
-  <!-- ── Side panel ───────────────────────────────────────────── -->
-  <nav class="side-panel">
-    <div class="dot active"  title="Dashboard"></div>
-    <div class="dot"         title="Rules"    ></div>
-    <div class="dot"         title="Chart"    ></div>
-  </nav>
+<div class="shell">
 
   <!-- ── Main column ──────────────────────────────────────────── -->
   <div class="main">
@@ -282,10 +508,10 @@
     <!-- Sensor values (real time) -->
     <section class="sensors-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-        <div class="panel-label" style="margin:0">Sensor values (real time)</div>
+        <div class="panel-label" style="margin:0">Sensor telemetry</div>
         <div style="display:flex;gap:.4rem">
-          <button style="font-size:.7rem;padding:.2rem .6rem" onclick="toggleRulePanel()">view rules</button>
-          <button class="primary" style="font-size:.7rem;padding:.2rem .6rem" onclick="openAddRule()">add rule</button>
+          <button style="font-size:.65rem;padding:.18rem .55rem" onclick="toggleRulePanel()">&#9776; rules</button>
+          <button class="primary" style="font-size:.65rem;padding:.18rem .55rem" onclick="openAddRule()">+ add rule</button>
         </div>
       </div>
       {% if sensors %}
@@ -310,24 +536,42 @@
         {% endfor %}
       </div>
       {% else %}
-      <p class="empty" id="sensorEmpty">No sensor data received yet.</p>
+      <p class="empty" id="sensorEmpty">// No sensor data received yet.</p>
       {% endif %}
     </section>
 
     <!-- Bottom row: line chart + actuator state -->
     <div class="bottom-row">
       <section class="chart-panel">
-        <div class="panel-label">Line chart</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.45rem">
+          <div class="panel-label" style="margin:0">Telemetry chart</div>
+          <select id="chartMetricSelect" onchange="onMetricChange()"
+            style="font-family:'Share Tech Mono',monospace;font-size:0.68rem;padding:.15rem .4rem;
+                   background:var(--mars-surface);border:1px solid var(--mars-border);
+                   border-radius:2px;color:var(--mars-hot);letter-spacing:.04em;cursor:pointer">
+            <option value="">— select metric —</option>
+          </select>
+        </div>
         <canvas id="telemetryChart"></canvas>
       </section>
 
       <section class="actuator-state-panel">
-        <div class="panel-label">Actuator state</div>
+        <div class="panel-label">Actuators</div>
         <div id="actuatorMini">
           {% for aid, data in actuators.items() %}
           <div class="arow" style="flex-direction:column;align-items:flex-start;gap:.1rem">
-            <span class="a-id" style="font-size:.68rem">{{ aid }}</span>
-            <span class="state-pill {{ data.state | lower }}">{{ data.state }}</span>
+            <span class="a-id" style="font-size:.65rem">{{ aid }}</span>
+            <div style="display:flex;align-items:center;gap:.3rem">
+              <span class="state-pill {{ data.state | lower }}">{{ data.state }}</span>
+              <button data-aid="{{ aid }}" onclick="toggleManualCtrl(this.dataset.aid)" style="font-size:.58rem;padding:.08rem .3rem">manual</button>
+            </div>
+            <div class="manual-ctrl" id="manual-ctrl-{{ aid }}">
+              <select id="manual-state-{{ aid }}">
+                <option value="ON">ON</option>
+                <option value="OFF">OFF</option>
+              </select>
+              <button class="primary" data-aid="{{ aid }}" onclick="sendManual(this.dataset.aid)" style="font-size:.58rem;padding:.08rem .3rem">send</button>
+            </div>
           </div>
           {% endfor %}
         </div>
@@ -339,11 +583,11 @@
   <!-- ── Rule panel (right, toggleable) ───────────────────────── -->
   <aside class="rule-panel" id="rulePanel">
     <div class="rule-panel-inner">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.65rem">
         <span class="panel-label" style="margin:0">Rule panel</span>
-        <div style="display:flex;gap:.4rem">
-          <button class="primary" style="font-size:.7rem;padding:.2rem .55rem" onclick="openAddRule()">add rule</button>
-          <button style="font-size:.7rem;padding:.2rem .55rem" onclick="toggleRulePanel()">✕</button>
+        <div style="display:flex;gap:.35rem">
+          <button class="primary" style="font-size:.63rem;padding:.15rem .5rem" onclick="openAddRule()">+ add</button>
+          <button style="font-size:.63rem;padding:.15rem .5rem" onclick="toggleRulePanel()">&#10005;</button>
         </div>
       </div>
       <div class="rule-list" id="ruleList"></div>
@@ -402,8 +646,8 @@
       </div>
     </div>
     <div style="display:flex;gap:.4rem;margin-bottom:.5rem">
-      <label style="font-size:.72rem;color:#8b949e;display:flex;align-items:center;gap:.4rem;cursor:pointer">
-        <input type="checkbox" id="rActive" checked style="width:auto" /> Active
+      <label style="font-size:.65rem;color:var(--mars-muted);display:flex;align-items:center;gap:.4rem;cursor:pointer;text-transform:uppercase;letter-spacing:.07em">
+        <input type="checkbox" id="rActive" checked style="width:auto;accent-color:var(--mars-bright)" /> Active
       </label>
     </div>
     <div class="modal-footer">
@@ -607,19 +851,82 @@ function updateActuators(actuators) {
   const ids = Object.keys(actuators).sort();
 
   const mini = document.getElementById('actuatorMini');
-  if (mini) {
-    mini.innerHTML = ids.map(aid => {
-      const state = actuators[aid].state || 'OFF';
-      return `<div class="arow" style="flex-direction:column;align-items:flex-start;gap:.1rem">
-        <span class="a-id" style="font-size:.68rem">${esc(aid)}</span>
+  if (!mini) return;
+
+  // snapshot open state and selected values before rebuild
+  const openPanels = {};
+  const selectedStates = {};
+  mini.querySelectorAll('.manual-ctrl').forEach(el => {
+    const aid = el.id.replace('manual-ctrl-', '');
+    openPanels[aid] = el.classList.contains('open');
+    const sel = document.getElementById('manual-state-' + aid);
+    if (sel) selectedStates[aid] = sel.value;
+  });
+
+  mini.innerHTML = ids.map(aid => {
+    const state = actuators[aid].state || 'OFF';
+    return `<div class="arow" style="flex-direction:column;align-items:flex-start;gap:.1rem">
+      <span class="a-id" style="font-size:.68rem">${esc(aid)}</span>
+      <div style="display:flex;align-items:center;gap:.3rem">
         <span class="state-pill ${state.toLowerCase()}">${esc(state)}</span>
-      </div>`;
-    }).join('');
+        <button data-aid="${esc(aid)}" onclick="toggleManualCtrl(this.dataset.aid)" style="font-size:.6rem;padding:.1rem .35rem">manual</button>
+      </div>
+      <div class="manual-ctrl" id="manual-ctrl-${esc(aid)}">
+        <select id="manual-state-${esc(aid)}">
+          <option value="ON">ON</option>
+          <option value="OFF">OFF</option>
+        </select>
+        <button class="primary" data-aid="${esc(aid)}" onclick="sendManual(this.dataset.aid)" style="font-size:.58rem;padding:.08rem .3rem">send</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // restore open state and selected values
+  ids.forEach(aid => {
+    if (openPanels[aid]) {
+      const el = document.getElementById('manual-ctrl-' + aid);
+      if (el) el.classList.add('open');
+    }
+    if (selectedStates[aid]) {
+      const sel = document.getElementById('manual-state-' + aid);
+      if (sel) sel.value = selectedStates[aid];
+    }
+  });
+}
+
+function toggleManualCtrl(aid) {
+  const el = document.getElementById('manual-ctrl-' + aid);
+  if (el) el.classList.toggle('open');
+}
+
+async function sendManual(aid) {
+  const stateEl = document.getElementById('manual-state-' + aid);
+  const state = stateEl ? stateEl.value : 'ON';
+  // TODO: extend payload once downstream endpoint parameters are finalised
+  const payload = { state };
+  try {
+    const resp = await fetch('/api/actuators/' + encodeURIComponent(aid) + '/manual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      alert('Manual override error: ' + (err.detail || resp.status));
+      return;
+    }
+    const result = await resp.json();
+    if (result.errors && result.errors.length > 0) {
+      alert('Sent with warnings: ' + result.errors.join('; '));
+    }
+    toggleManualCtrl(aid);
+  } catch (e) {
+    alert('Request failed: ' + e);
   }
 }
 
 // ── Chart ─────────────────────────────────────────────────────────────
-const COLORS = ['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#39d353'];
+const COLORS = ['#ff6b47','#e74c3c','#cd853f','#e8a010','#c0392b','#a0522d'];
 let chart = null;
 
 function updateChartHistory(sensors) {
@@ -641,24 +948,61 @@ function updateChartHistory(sensors) {
   }
 }
 
-function refreshChart() {
-  let sharedLabels = [];
-  const allSeries = [];
-  for (const [sid, h] of Object.entries(chartHistory)) {
-    if (h.labels.length > sharedLabels.length) sharedLabels = h.labels;
+let selectedMetric = '';
+
+function onMetricChange() {
+  selectedMetric = document.getElementById('chartMetricSelect').value;
+  refreshChart();
+}
+
+function updateMetricSelector() {
+  const sel = document.getElementById('chartMetricSelect');
+  const allKeys = new Set();
+  for (const h of Object.values(chartHistory))
     for (const key of Object.keys(h.metrics))
-      allSeries.push({ sid, key });
+      allKeys.add(key);
+
+  // add new options without touching the current selection
+  const existing = new Set([...sel.options].map(o => o.value));
+  for (const key of allKeys) {
+    if (!existing.has(key)) {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = key;
+      sel.appendChild(opt);
+    }
   }
 
-  const datasets = allSeries.slice(0, 6).map(({ sid, key }, i) => ({
-    label: key,
-    data: chartHistory[sid].metrics[key],
-    borderColor: COLORS[i % COLORS.length],
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
+  // auto-select first real metric if nothing chosen yet
+  if (!selectedMetric && allKeys.size > 0) {
+    selectedMetric = [...allKeys][0];
+    sel.value = selectedMetric;
+  }
+}
+
+function refreshChart() {
+  updateMetricSelector();
+
+  // find which sid owns the selected key
+  let sharedLabels = [];
+  let seriesData   = [];
+  for (const [sid, h] of Object.entries(chartHistory)) {
+    if (h.labels.length > sharedLabels.length) sharedLabels = h.labels;
+    if (selectedMetric && h.metrics[selectedMetric]) {
+      seriesData = h.metrics[selectedMetric];
+    }
+  }
+
+  const datasets = selectedMetric ? [{
+    label: selectedMetric,
+    data: seriesData,
+    borderColor: COLORS[0],
+    backgroundColor: 'rgba(192,57,43,0.08)',
+    fill: true,
+    borderWidth: 2,
     pointRadius: 0,
     tension: 0.3,
-  }));
+  }] : [];
 
   if (!chart) {
     const ctx = document.getElementById('telemetryChart').getContext('2d');
@@ -670,11 +1014,11 @@ function refreshChart() {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { labels: { color: '#8b949e', font: { size: 9 }, boxWidth: 10 } },
+          legend: { labels: { color: '#c47a5a', font: { size: 12, family: "'Share Tech Mono'" }, boxWidth: 12 } },
         },
         scales: {
-          x: { ticks: { color: '#484f58', font: { size: 8 }, maxTicksLimit: 6 }, grid: { color: '#21262d' } },
-          y: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: '#21262d' } },
+          x: { ticks: { color: '#a05a3a', font: { size: 11 }, maxTicksLimit: 6 }, grid: { color: 'rgba(107,45,26,0.25)' } },
+          y: { ticks: { color: '#c47a5a', font: { size: 11 } }, grid: { color: 'rgba(107,45,26,0.25)' } },
         },
       },
     });
@@ -684,6 +1028,14 @@ function refreshChart() {
     chart.update('none');
   }
 }
+
+// ── Clock ───────────────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clockDisplay').textContent =
+    new Date().toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+updateClock();
+setInterval(updateClock, 1000);
 
 // ── Init ──────────────────────────────────────────────────────────────
 renderRules();

@@ -68,6 +68,7 @@ services:
       RABBITMQ_USER: guest
       RABBITMQ_PASSWORD: guest
       RULES_SERVICE_URL: http://rules-service:8001
+      RULE_ENGINE_URL: http://rule-engine:8000
     restart: on-failure
 
   postgres:
