@@ -99,9 +99,9 @@ def remove_rule(
     if not db_rule:
         raise HTTPException(status_code=404, detail="Regola non trovata")
 
-    # 2. TRUCCO: Mandiamo al Motore di Automazione un finto aggiornamento
-    # dicendogli che questa regola ora è "is_active = False", così smette di usarla!
-    rule_data = jsonable_encoder([{"id": rule_id, "is_active": False}])
-    background_tasks.add_task(send_rules_to_engine, rule_data)
+    # 2. Invia al Motore la regola completa con is_active=False, così la rimuove dalla memoria
+    rule_dict = jsonable_encoder(db_rule)
+    rule_dict["is_active"] = False
+    background_tasks.add_task(send_rules_to_engine, [rule_dict])
 
     return {"message": f"Regola {rule_id} eliminata con successo"}

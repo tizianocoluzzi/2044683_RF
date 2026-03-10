@@ -1,0 +1,112 @@
+services:
+  base:
+    image: mars-iot-simulator:multiarch_v1
+    container_name: base
+    restart: on-failure
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  normalizer:
+    build:
+      context: ./normalizer
+    container_name: normalizer
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+      API_BASE_URL: http://base:8080
+      WS_BASE_URL: ws://base:8080
+    restart: on-failure
+
+  rule-engine:
+    build:
+      context: ./rule-engine
+    container_name: rule-engine
+    ports:
+      - '8000:8000'
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      base:
+        condition: service_started
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      ACTUATOR_BASE_URL: http://base:8080/api/actuators
+    restart: on-failure
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: frontend
+    ports:
+      - '5000:5000'
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      rule-engine:
+        condition: service_started
+      rules-service:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+      RULES_SERVICE_URL: http://rules-service:8001
+      RULE_ENGINE_URL: http://rule-engine:8000
+    restart: on-failure
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: mars_postgres
+    environment:
+      POSTGRES_USER: mars_user
+      POSTGRES_PASSWORD: mars_password
+      POSTGRES_DB: mars_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mars_user -d mars_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rules-service:
+    build:
+      context: ./rules_service
+    container_name: rules-service
+    ports:
+      - '8001:8001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://mars_user:mars_password@postgres:5432/mars_db
+      RULE_ENGINE_URL: http://rule-engine:8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+
+volumes:
+  postgres_data:
